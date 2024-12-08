@@ -37,21 +37,30 @@ class StateMachineTest {
         }
 
         // output is:
-        // MyThread, 17.813: goto state function: b
-        // MyThread, 18.708: pushed event: B
-        // MyThread, 18.710: received event: B
-        // MyThread, 18.720: pushed event: A
-        // MyThread, 18.721: received event: A
-        // MyThread, 18.723: goto state function: a
-        // MyThread, 18.824: goto state function: b
-        // MyThread, 19.721: pushed event: C(active=true)
-        // MyThread, 19.723: received event: C(active=true)
-        // MyThread, 19.724: goto state function: c
-        // MyThread, 20.294: goto state function: a
-        // MyThread, 20.396: goto state function: b
-        // MyThread, 20.723: pushed event: D
-        // MyThread, 20.724: received event: D
-        // MyThread, 20.726: goto state function: d
-        // MyThread, 21.735: goto state function: b
+        // MyThread - 38.717:  entering state function: a
+        // MyThread - 38.822:  leaving state function: a
+        // MyThread - 38.823:  entering state function: b
+        // MyThread - 39.716:  pushed event: B
+        // MyThread - 39.717:  received event: B
+        // MyThread - 39.727:  pushed event: A
+        // MyThread - 39.727:  received event: A
+        // MyThread - 39.727:  leaving state function: b
+        // MyThread - 39.727:  entering state function: a
+        // MyThread - 39.828:  leaving state function: a
+        // MyThread - 39.828:  entering state function: b
+        // MyThread - 40.727:  pushed event: C(active=true)
+        // MyThread - 40.728:  received event: C(active=true)
+        // MyThread - 40.729:  leaving state function: b
+        // MyThread - 40.729:  entering state function: c
+        // MyThread - 41.270:  leaving state function: c
+        // MyThread - 41.271:  entering state function: a
+        // MyThread - 41.372:  leaving state function: a
+        // MyThread - 41.373:  entering state function: b
+        // MyThread - 41.728:  pushed event: D
+        // MyThread - 41.729:  received event: D
+        // MyThread - 41.730:  leaving state function: b
+        // MyThread - 41.730:  entering state function: d
+        // MyThread - 42.738:  leaving state function: d
+        // MyThread - 42.738:  entering state function: b
     }
 }

@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.reflect.KSuspendFunction0
 import kotlin.time.Duration
 
@@ -18,17 +21,19 @@ typealias StateFunction = KSuspendFunction0<Unit>
 
 abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher) {
 
+    protected val log: Logger = LoggerFactory.getLogger(this::class.java)
+
     private class LeaveStateFunctionException : Exception("leave state function")
 
     private val leaveStateFunctionException = LeaveStateFunctionException()
     private val context = CoroutineScope(dispatcher)
-    private val stateExecutionMutex = Mutex()
-    private val transitionLaunchCounter = AtomicInteger()
+    private val stateFunctionExecutionMutex = Mutex()
+    private val transitionsLaunchedCounter = AtomicInteger()
     private val events = MutableSharedFlow<EVENT>(extraBufferCapacity = 100)
 
 
     protected fun start(stateFunction: StateFunction) {
-        launchGoto(stateFunction)
+        launchStateFunction(stateFunction)
     }
 
     open fun stop() {
@@ -36,26 +41,28 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     }
 
     fun pushEvent(event: EVENT) {
-        println("${getLogInfos()} pushed event: $event")
-        this.events.tryEmit(event)
+        log.info("${getLogInfos()} pushed event: $event")
+        if (!events.tryEmit(event)) {
+            log.error("Too many events and processing of events is to slow!")
+        }
     }
 
     protected fun goto(stateFunction: StateFunction) {
-        if (transitionLaunchCounter.incrementAndGet() == 1) {
-            launchGoto(stateFunction)
+        if (transitionsLaunchedCounter.incrementAndGet() == 1) {
+            launchStateFunction(stateFunction)
         }
         throw leaveStateFunctionException // to leave current state function (cancel all pending code)
     }
 
     protected suspend fun consumeEvents(processEvent: suspend (EVENT) -> Unit) {
         events.collect { event ->
-            println("${getLogInfos()} received event: $event")
+            log.info("${getLogInfos()} received event: $event")
             processEvent(event)
         }
     }
 
     protected suspend fun parallel(vararg functions: suspend () -> Unit) {
-        coroutineScope {
+        coroutineScope { // use coroutineScope to cancel all parallel executed functions when leaving this state function
             functions.forEach {
                 launch { it() }
             }
@@ -69,26 +76,47 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
         }
     }
 
+    protected open fun onEnterState(stateFunction: StateFunction) {  // can be overridden
+        log.info("${getLogInfos()} entering state function: ${stateFunction.name}")
+    }
 
-    private fun launchGoto(stateFunction: StateFunction) {
-        context.launch {
+    protected open fun onExitState(stateFunction: StateFunction) {  // can be overridden
+        log.info("${getLogInfos()} leaving state function: ${stateFunction.name}")
+    }
+
+    protected open fun onExitStateFailure(stateFunction: StateFunction, e: Exception) {  // can be overridden
+        log.info("${getLogInfos()} leaving state function with an exception: ${stateFunction.name}, ${e::class.simpleName}: ${e.message}")
+    }
+
+    protected open fun handleException(exception: Exception) {
+        log.info("${getLogInfos()} exception occurred: $exception")
+        throw exception
+    }
+
+
+    private fun launchStateFunction(stateFunction: StateFunction) {
+        context.launch { executeStateFunction(stateFunction) }
+    }
+
+    private suspend fun executeStateFunction(stateFunction: StateFunction) {
+        stateFunctionExecutionMutex.withLock {
             try {
-                executeState(stateFunction)
+                transitionsLaunchedCounter.set(0)
+                onEnterState(stateFunction)
+                stateFunction()
+                onExitState(stateFunction) // this line should never be reached (all state functions must be exited via an exception)
+            } catch (e: LeaveStateFunctionException) {
+                onExitState(stateFunction)
+            } catch (e: CancellationException) {
+                throw e // CancellationException must always be re-thrown!
             } catch (e: Exception) {
-                if (e !is LeaveStateFunctionException) throw e
+                onExitStateFailure(stateFunction, e)
+                handleException(e)
             }
         }
     }
 
-    private suspend fun executeState(stateFunction: StateFunction) {
-        stateExecutionMutex.withLock {
-            println("${getLogInfos()} goto state function: ${stateFunction.name}")
-            transitionLaunchCounter.set(0)
-            stateFunction()
-        }
-    }
-
     private fun getLogInfos() =
-        "${Thread.currentThread().name}, ${System.currentTimeMillis().let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }}:"
+        "${System.currentTimeMillis().let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }}: "
 
 }
