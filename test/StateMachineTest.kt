@@ -53,6 +53,5 @@ class StateMachineTest {
         // MyThread, 20.724: received event: D
         // MyThread, 20.726: goto state function: d
         // MyThread, 21.735: goto state function: b
-        //
     }
 }
