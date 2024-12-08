@@ -18,9 +18,9 @@ typealias StateFunction = KSuspendFunction0<Unit>
 
 abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher) {
 
-    class LeaveStateException : Exception("leave state function")
+    private class LeaveStateFunctionException : Exception("leave state function")
 
-    private val leaveStateException = LeaveStateException()
+    private val leaveStateFunctionException = LeaveStateFunctionException()
     private val context = CoroutineScope(dispatcher)
     private val stateExecutionMutex = Mutex()
     private val transitionLaunchCounter = AtomicInteger()
@@ -36,7 +36,7 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     }
 
     fun pushEvent(event: EVENT) {
-        println("${time()} pushed event: $event")
+        println("${getLogInfos()} pushed event: $event")
         this.events.tryEmit(event)
     }
 
@@ -44,12 +44,12 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
         if (transitionLaunchCounter.incrementAndGet() == 1) {
             launchGoto(stateFunction)
         }
-        throw leaveStateException // to leave current state function (cancel all pending code)
+        throw leaveStateFunctionException // to leave current state function (cancel all pending code)
     }
 
     protected suspend fun consumeEvents(processEvent: suspend (EVENT) -> Unit) {
         events.collect { event ->
-            println("${time()} received event: $event")
+            println("${getLogInfos()} received event: $event")
             processEvent(event)
         }
     }
@@ -57,9 +57,7 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     protected suspend fun parallel(vararg functions: suspend () -> Unit) {
         coroutineScope {
             functions.forEach {
-                launch {
-                    it()
-                }
+                launch { it() }
             }
         }
     }
@@ -77,22 +75,20 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
             try {
                 executeState(stateFunction)
             } catch (e: Exception) {
-                if (e !is LeaveStateException) throw e
+                if (e !is LeaveStateFunctionException) throw e
             }
         }
     }
 
     private suspend fun executeState(stateFunction: StateFunction) {
         stateExecutionMutex.withLock {
-            println("${time()} goto state function: ${stateFunction.name}")
+            println("${getLogInfos()} goto state function: ${stateFunction.name}")
             transitionLaunchCounter.set(0)
             stateFunction()
         }
     }
 
-    private fun time(): String {
-        val thread = Thread.currentThread().name
-        val time = System.currentTimeMillis().let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }
-        return "$thread $time:"
-    }
+    private fun getLogInfos() =
+        "${Thread.currentThread().name}, ${System.currentTimeMillis().let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }}:"
+
 }
