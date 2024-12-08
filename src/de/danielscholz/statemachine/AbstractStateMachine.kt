@@ -18,7 +18,11 @@ import kotlin.time.Duration
 
 typealias StateFunction = KSuspendFunction0<Unit>
 
-
+/**
+ * Base for a custom non-blocking state machine.
+ *
+ * This base implementation guarantees that only one state function is active at any time and that only one transition is executed at any time.
+ */
 abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher) {
 
     protected val log: Logger = LoggerFactory.getLogger(this::class.java)
