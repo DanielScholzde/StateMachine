@@ -21,7 +21,9 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
     private suspend fun a() {
         // do initial work for state here
         delay(100.milliseconds)
-        goto(::b)
+        goto(::b) {
+            log.info("executing transition to b")
+        }
     }
 
     private suspend fun b() {

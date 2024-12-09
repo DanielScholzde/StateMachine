@@ -51,9 +51,9 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
         }
     }
 
-    protected fun goto(stateFunction: StateFunction) {
+    protected fun goto(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)? = null) {
         if (transitionsLaunchedCounter.incrementAndGet() == 1) {
-            launchStateFunction(stateFunction)
+            launchStateFunction(stateFunction, transitionAction)
         }
         throw leaveStateFunctionException // to leave current state function (cancel all pending code)
     }
@@ -98,17 +98,26 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     }
 
 
-    private fun launchStateFunction(stateFunction: StateFunction) {
-        context.launch { executeStateFunction(stateFunction) }
+    private fun launchStateFunction(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)? = null) {
+        context.launch { executeStateFunction(stateFunction, transitionAction) }
     }
 
-    private suspend fun executeStateFunction(stateFunction: StateFunction) {
+    private suspend fun executeStateFunction(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)?) {
         stateFunctionExecutionMutex.withLock {
+            transitionsLaunchedCounter.set(0)
             try {
-                transitionsLaunchedCounter.set(0)
+                transitionAction?.invoke()
+            } catch (e: CancellationException) {
+                throw e // CancellationException must always be re-thrown!
+            } catch (e: Exception) {
+                handleException(e)
+            }
+            try {
                 onEnterState(stateFunction)
                 stateFunction()
-                onExitState(stateFunction) // this line should never be reached (all state functions must be exited via an exception)
+                // next lines should never be reached (all state functions must be exited via an exception)
+                onExitState(stateFunction)
+                log.error("State function ${stateFunction.name} has exited without any transition to an other state function!")
             } catch (e: LeaveStateFunctionException) {
                 onExitState(stateFunction)
             } catch (e: CancellationException) {
