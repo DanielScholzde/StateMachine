@@ -3,9 +3,9 @@ package de.danielscholz.statemachine
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,10 +30,10 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     private class LeaveStateFunctionException : Exception("leave state function")
 
     private val leaveStateFunctionException = LeaveStateFunctionException()
-    private val context = CoroutineScope(dispatcher)
+    private val context = CoroutineScope(dispatcher) // supervisorScope?
     private val stateFunctionExecutionMutex = Mutex()
     private val transitionsLaunchedCounter = AtomicInteger()
-    private val events = MutableSharedFlow<EVENT>(extraBufferCapacity = 100)
+    private val events = Channel<EVENT>(capacity = 100)
 
 
     protected fun start(stateFunction: StateFunction) {
@@ -44,14 +44,18 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
         context.cancel()
     }
 
+    /**
+     * Add an event to the state machines event queue. Returns immediately.
+     */
     fun pushEvent(event: EVENT) {
         log.info("${getLogInfos()} pushed event: $event")
-        if (!events.tryEmit(event)) {
+        val result = events.trySend(event)
+        if (result.isFailure || result.isClosed) {
             log.error("Too many events and processing of events is to slow!")
         }
     }
 
-    protected fun goto(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)? = null) {
+    protected fun goto(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)? = null): Nothing {
         if (transitionsLaunchedCounter.incrementAndGet() == 1) {
             launchStateFunction(stateFunction, transitionAction)
         }
@@ -59,7 +63,7 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
     }
 
     protected suspend fun consumeEvents(processEvent: suspend (EVENT) -> Unit) {
-        events.collect { event ->
+        for (event in events) {
             log.info("${getLogInfos()} received event: $event")
             processEvent(event)
         }
@@ -104,7 +108,7 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
 
     private suspend fun executeStateFunction(stateFunction: StateFunction, transitionAction: (suspend () -> Unit)?) {
         stateFunctionExecutionMutex.withLock {
-            transitionsLaunchedCounter.set(0)
+            transitionsLaunchedCounter.set(0) // reset counter
             try {
                 transitionAction?.invoke()
             } catch (e: CancellationException) {
@@ -113,6 +117,9 @@ abstract class AbstractStateMachine<EVENT : Any>(dispatcher: CoroutineDispatcher
                 handleException(e)
             }
             try {
+                while (true) {
+                    if (!events.tryReceive().isSuccess) break
+                }
                 onEnterState(stateFunction)
                 stateFunction()
                 // next lines should never be reached (all state functions must be exited via an exception)
