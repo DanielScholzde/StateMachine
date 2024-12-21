@@ -20,9 +20,13 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
 
     private suspend fun a() {
         // do initial work for state here
-        delay(100.milliseconds)
-        goto(::b) {
-            log.info("executing transition to b")
+        try {
+            delay(100.milliseconds)
+            goto(::b) {
+                log.info("executing transition to b")
+            }
+        } finally {
+            // do cleanup work for state here
         }
     }
 
@@ -30,6 +34,7 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
         consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
+                // Event.B is ignored
                 event is Event.C && event.active -> goto(::c)
                 event is Event.D -> goto(::d)
             }
