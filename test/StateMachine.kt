@@ -14,13 +14,14 @@ sealed class Event {
 var sensorValue = 0.0
 
 
-class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
+class StateMachine : AbstractStateMachine<Event>(dispatcher = singleThreadDispatcher, clearEventsBeforeStateFunctionEnter = true) {
 
     fun start() = start(::a) // specify start state function 'a'
 
     private suspend fun a() {
-        // do initial work for state here
         try {
+            // do initial work for state here
+            ignoreEvents() // ignore all events already happened and that occurs within this state function execution duration (this state has no event consumer)
             delay(100.milliseconds)
             goto(::b) {
                 log.info("executing transition to b")
@@ -31,7 +32,7 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
     }
 
     private suspend fun b() {
-        consumeEvents { event ->
+        consumeEvents { event, meta ->
             when {
                 event is Event.A -> goto(::a)
                 // Event.B is ignored
@@ -45,7 +46,7 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
         // do initial work for state here
         parallel(
             {
-                consumeEvents { event ->
+                consumeEvents { event, meta ->
                     when {
                         event is Event.A -> goto(::a)
                         event is Event.C -> goto(::c)
@@ -60,6 +61,7 @@ class StateMachine : AbstractStateMachine<Event>(singleThreadDispatcher) {
     }
 
     private suspend fun d() {
+        ignoreEvents()
         repeatEvery(100.milliseconds) {
             if (sensorValue > 0.5) goto(::b)
         }
