@@ -1,5 +1,9 @@
+package scenario2
+
 import de.danielscholz.statemachine.AbstractStateMachine
-import de.danielscholz.statemachine.singleThreadDispatcher
+import de.danielscholz.statemachine.StateFunction
+import de.danielscholz.statemachine.parallel
+import de.danielscholz.statemachine.repeatEvery
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -14,9 +18,10 @@ sealed class Event {
 var sensorValue = 0.0
 
 
-class StateMachine : AbstractStateMachine<Event>(dispatcher = singleThreadDispatcher, clearEventsBeforeStateFunctionEnter = true) {
+// state machine with no end states (it never stops normally) and cleared events channel for each state function
+class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFunctionEnter = true) {
 
-    fun start() = start(::a) // specify start state function 'a'
+    suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
 
     private suspend fun a() {
         try {
@@ -24,7 +29,7 @@ class StateMachine : AbstractStateMachine<Event>(dispatcher = singleThreadDispat
             ignoreEvents() // ignore all events already happened and that occurs within this state function execution duration (this state has no event consumer)
             delay(100.milliseconds)
             goto(::b) {
-                log.info("executing transition to b")
+                println("${getLogInfos()} executing transition to b")
             }
         } finally {
             // do cleanup work for state here
@@ -66,5 +71,25 @@ class StateMachine : AbstractStateMachine<Event>(dispatcher = singleThreadDispat
             if (sensorValue > 0.5) goto(::b)
         }
     }
+
+
+    override fun onEventPushed(event: Event) {
+        println("${getLogInfos()} pushed event: $event")
+    }
+
+    override fun onEventReceived(event: Event, eventMeta: EventMeta, ignored: Boolean) {
+        println("${getLogInfos()} received ${if (ignored) "ignored " else ""}event: $event")
+    }
+
+    override suspend fun onEnterState(stateFunction: StateFunction) {
+        println("${getLogInfos()} entering state function: ${stateFunction.name}")
+    }
+
+    val start = System.currentTimeMillis()
+
+    private fun getLogInfos() =
+        "[${Thread.currentThread().name.padEnd(22, ' ')}] ${
+            (System.currentTimeMillis() - start).let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }
+        }:"
 
 }
