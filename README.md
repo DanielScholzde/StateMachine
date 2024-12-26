@@ -5,8 +5,10 @@ A tiny but powerful state machine powered by Kotlin Coroutines.
 Advantages:
 
 - state machine is non-blocking
-- state machine can be run on a single thread to prevent stale data (in most cases no 'volatile' and/or synchronization needed)
+- state machine can be run on a single thread to prevent stale or inconsistent data (in most cases no 'volatile' and/or synchronization needed)
 - whole definition is done via well known Kotlin (Coroutines) code with full IDE support
-- tiny implementation, only about 100 lines of code
+- tiny implementation, only about 200 lines of code
 
-For usage see example [StateMachine](test/StateMachine.kt) and [StateMachine test](test/StateMachineTest.kt).
+For basic usage see simple example [StateMachine1](test/scenario1/StateMachine1.kt) and [StateMachine1 test](test/scenario1/StateMachine1Test.kt).
+
+And for a more complex example see [StateMachine2](test/scenario2/StateMachine2.kt) and [StateMachine2 test](test/scenario2/StateMachine2Test.kt).
