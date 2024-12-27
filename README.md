@@ -9,6 +9,6 @@ Advantages:
 - whole definition is done via well known Kotlin (Coroutines) code with full IDE support
 - tiny implementation, only about 200 lines of code
 
-For basic usage see simple example [StateMachine1](test/scenario1/StateMachine1.kt) and [StateMachine1 test](test/scenario1/StateMachine1Test.kt).
+For basic usage see simple example [StateMachine1](src/jvmTest/kotlin/scenario1/StateMachine1.kt) and [StateMachine1 test](src/jvmTest/kotlin/scenario1/StateMachine1Test.kt).
 
-And for a more complex example see [StateMachine2](test/scenario2/StateMachine2.kt) and [StateMachine2 test](test/scenario2/StateMachine2Test.kt).
+And for a more complex example see [StateMachine2](src/jvmTest/kotlin/scenario2/StateMachine2.kt) and [StateMachine2 test](src/jvmTest/kotlin/scenario2/StateMachine2Test.kt).

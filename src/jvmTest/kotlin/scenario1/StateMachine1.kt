@@ -55,7 +55,11 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
     }
 
     private suspend fun endState() {
-        setResult(Result.SUCCESS)
+        exitWithResult(Result.SUCCESS)
+    }
+
+    override fun handleException(exception: Exception) {
+        exitWithResult(Result.FAILURE)
     }
 
 
