@@ -21,7 +21,7 @@ var sensorValue = 0.0
 // state machine with no end states (it never stops normally) and cleared events channel for each state function
 class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFunctionEnter = true) {
 
-    suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
+    override suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
 
     private suspend fun a() {
         try {
@@ -37,7 +37,7 @@ class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFu
     }
 
     private suspend fun b() {
-        consumeEvents { event, meta ->
+        consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
                 // Event.B is ignored
@@ -51,7 +51,7 @@ class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFu
         // do initial work for state here
         parallel(
             {
-                consumeEvents { event, meta ->
+                consumeEvents { event ->
                     when {
                         event is Event.A -> goto(::a)
                         event is Event.C -> goto(::c)

@@ -18,7 +18,7 @@ enum class Result { SUCCESS, FAILURE }
 // state machine with an end state and an events channel which keeps all events until they get processed
 class StateMachine1 : AbstractStateMachine<Event, Result>() {
 
-    suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
+    override suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
 
     private suspend fun a() {
         try {
@@ -34,7 +34,7 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
 
     private suspend fun b() {
         // do initial work for state here
-        consumeEvents { event, meta ->
+        consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
                 // Event.B is ignored
@@ -46,7 +46,7 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
 
     private suspend fun c() {
         // do initial work for state here
-        consumeEvents { event, meta ->
+        consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
                 event is Event.B -> goto(::b)

@@ -18,13 +18,13 @@ class StateMachine2Test {
         newSingleThreadDispatcher.use { singleThreadDispatcher ->
             runBlocking(singleThreadDispatcher) {
 
-                with(StateMachine2()) {
+                with(StateMachine2()) { // state machine is configured with clearEventsBeforeStateFunctionEnter = true
 
                     val stateMachineResult = async { runWaiting() }
 
                     delay(1000.milliseconds)
                     // here: state machine should be in state function 'b'
-                    pushEvent(Event.B) // should have no effect
+                    pushEvent(Event.B) // should have no effect; pushEvent() sends event to state machine and does not wait until it gets processed (unlike sendEvent)
                     delay(10.milliseconds)
                     pushEvent(Event.A) // transition to 'a' should be triggered
 
