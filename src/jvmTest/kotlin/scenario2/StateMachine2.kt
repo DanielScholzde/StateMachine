@@ -4,6 +4,7 @@ import de.danielscholz.statemachine.AbstractStateMachine
 import de.danielscholz.statemachine.StateFunction
 import de.danielscholz.statemachine.parallel
 import de.danielscholz.statemachine.repeatEvery
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -21,7 +22,7 @@ var sensorValue = 0.0
 // state machine with no end states (it never stops normally) and cleared events channel for each state function
 class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFunctionEnter = true) {
 
-    override suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
+    suspend fun CoroutineScope.start() = start(::a) // specify start state function 'a'
 
     private suspend fun a() {
         try {

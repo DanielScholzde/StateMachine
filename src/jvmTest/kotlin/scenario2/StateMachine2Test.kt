@@ -4,7 +4,6 @@ package scenario2
 
 import de.danielscholz.statemachine.newSingleThreadDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -20,7 +19,7 @@ class StateMachine2Test {
 
                 with(StateMachine2()) { // state machine is configured with clearEventsBeforeStateFunctionEnter = true
 
-                    val stateMachineResult = async { runWaiting() }
+                    val stateMachineResult = start()
 
                     delay(1000.milliseconds)
                     // here: state machine should be in state function 'b'

@@ -2,6 +2,7 @@ package scenario1
 
 import de.danielscholz.statemachine.AbstractStateMachine
 import de.danielscholz.statemachine.StateFunction
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -18,7 +19,7 @@ enum class Result { SUCCESS, FAILURE }
 // state machine with an end state and an events channel which keeps all events until they get processed
 class StateMachine1 : AbstractStateMachine<Event, Result>() {
 
-    override suspend fun runWaiting() = runWaiting(::a) // specify start state function 'a'
+    suspend fun CoroutineScope.start() = start(::a) // specify start state function 'a'
 
     private suspend fun a() {
         try {

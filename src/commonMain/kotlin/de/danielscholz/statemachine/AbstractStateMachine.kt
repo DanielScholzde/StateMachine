@@ -2,7 +2,9 @@ package de.danielscholz.statemachine
 
 import de.danielscholz.statemachine.intern.Barrier
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.UNLIMITED
 import kotlinx.coroutines.coroutineScope
@@ -42,6 +44,7 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     private val transitionsLaunchedCounter = AtomicInteger()
     private val counter = AtomicLong() // increments before each transition and each state function enter
     private val eventChannel = Channel<EventWrapper<EVENT>>(capacity = UNLIMITED)
+    private var startupCompleteBarrier: Barrier? = Barrier()
     private var currentEvent: EventWrapper<EVENT>? = null
 
     @Volatile
@@ -69,21 +72,25 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     class EventMeta(val created: ValueTimeMark, val createdWithinThisStateFunction: Boolean)
 
 
-    abstract suspend fun runWaiting(): RESULT
-
-    protected suspend fun runWaiting(stateFunction: StateFunction): RESULT {
-        if (scope != null) throw IllegalStateException("State machine is already running!")
-        try {
-            coroutineScope {
-                scope = this
-                launchStateFunction(stateFunction)
+    protected suspend fun CoroutineScope.start(startStateFunction: StateFunction): Deferred<RESULT> {
+        val startupCompleteBarrier = startupCompleteBarrier!!
+        val deferredResult = async {
+            if (scope != null) throw IllegalStateException("State machine is already running!")
+            try {
+                coroutineScope {
+                    scope = this
+                    launchStateFunction(startStateFunction)
+                    // coroutineScope waits, until all child coroutines (state functions) are finished
+                }
+                @Suppress("UNCHECKED_CAST")
+                result as RESULT
+            } finally {
+                scope = null
+                cleanup()
             }
-            @Suppress("UNCHECKED_CAST")
-            return result as RESULT
-        } finally {
-            scope = null
-            cleanup()
         }
+        startupCompleteBarrier.wait()
+        return deferredResult
     }
 
     protected open fun cleanup() {
@@ -206,31 +213,34 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
         stateFunctionExecutionMutex.withLock {
             transitionsLaunchedCounter.set(0) // reset counter
 
-            currentState?.let { fromState ->
-                onTransition(fromState, stateFunction)
-            }
+            if (currentState != null) {
+                onTransition(currentState!!, stateFunction)
 
-            transitionAction?.let {
-                val ok = handleExceptionsIntern {
-                    val duration = measureTime {
-                        coroutineScope {
-                            stateFunctionScope = this
-                            try {
-                                counter.incrementAndGet()
-                                transitionAction.invoke()
-                            } finally {
-                                eventConsumer = null
-                                stateFunctionScope = null
+                transitionAction?.let {
+                    val ok = handleExceptionsIntern {
+                        val duration = measureTime {
+                            coroutineScope {
+                                stateFunctionScope = this
+                                try {
+                                    counter.incrementAndGet()
+                                    transitionAction.invoke()
+                                } finally {
+                                    eventConsumer = null
+                                    stateFunctionScope = null
+                                }
                             }
                         }
+                        // 'transition' to start state function has no transitionAction, so here currentState must always be not null
+                        onTransitionActionFinished(currentState!!, stateFunction, duration)
                     }
-                    // 'transition' to start state function has no transitionAction, so here currentState must always be not null
-                    onTransitionActionFinished(currentState!!, stateFunction, duration)
+                    if (!ok) return@withLock
                 }
-                if (!ok) return@withLock
             }
 
             currentState = stateFunction // do not set to null between two stateFunctions
+
+            startupCompleteBarrier?.release() // release startup complete barrier after setting currentState
+            startupCompleteBarrier = null
 
             event?.eventReceived(true, true) // release event processed barrier after executing transition and setting currentState
 

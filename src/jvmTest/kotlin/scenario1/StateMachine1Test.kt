@@ -1,6 +1,5 @@
 package scenario1
 
-import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 
@@ -10,7 +9,7 @@ class StateMachine1Test {
     @Test
     fun test() = runBlocking {
         with(StateMachine1()) {
-            val result = async { runWaiting() }
+            val result = start()
 
             sendEvent(Event.B) // transition to 'b' should be triggered; sendEvent() waits until event is processed
             sendEvent(Event.C(finish = false)) // transition to 'c' should be triggered
