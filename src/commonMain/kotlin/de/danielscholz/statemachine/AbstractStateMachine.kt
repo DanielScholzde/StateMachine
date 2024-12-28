@@ -13,8 +13,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.reflect.KSuspendFunction0
+import kotlin.time.Duration
 import kotlin.time.TimeSource
 import kotlin.time.TimeSource.Monotonic.ValueTimeMark
+import kotlin.time.measureTime
 
 typealias StateFunction = KSuspendFunction0<Unit>
 typealias TransitionAction = suspend () -> Unit
@@ -195,6 +197,9 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     /** ATTENTION: this method must never call goto() or exitWithResult()! */
     protected open fun onTransition(fromState: StateFunction, toState: StateFunction) {}
 
+    /** ATTENTION: this method must never call goto() or exitWithResult()! */
+    protected open fun onTransitionActionFinished(fromState: StateFunction, toState: StateFunction, duration: Duration) {}
+
 
     /** ATTENTION: this method must never throw any exceptions except CancellationException! */
     private suspend fun executeStateFunction(stateFunction: StateFunction, transitionAction: TransitionAction?, event: EventWrapper<EVENT>?) {
@@ -207,16 +212,20 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
 
             transitionAction?.let {
                 val ok = handleExceptionsIntern {
-                    coroutineScope {
-                        stateFunctionScope = this
-                        try {
-                            counter.incrementAndGet()
-                            transitionAction.invoke()
-                        } finally {
-                            eventConsumer = null
-                            stateFunctionScope = null
+                    val duration = measureTime {
+                        coroutineScope {
+                            stateFunctionScope = this
+                            try {
+                                counter.incrementAndGet()
+                                transitionAction.invoke()
+                            } finally {
+                                eventConsumer = null
+                                stateFunctionScope = null
+                            }
                         }
                     }
+                    // 'transition' to start state function has no transitionAction, so here currentState must always be not null
+                    onTransitionActionFinished(currentState!!, stateFunction, duration)
                 }
                 if (!ok) return@withLock
             }
