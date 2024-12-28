@@ -73,7 +73,7 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
 
 
     protected suspend fun CoroutineScope.start(startStateFunction: StateFunction): Deferred<RESULT> {
-        val startupCompleteBarrier = startupCompleteBarrier!!
+        val startupComplete = startupCompleteBarrier!!
         val deferredResult = async {
             if (scope != null) throw IllegalStateException("State machine is already running!")
             try {
@@ -87,9 +87,10 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
             } finally {
                 scope = null
                 cleanup()
+                startupCompleteBarrier?.release() // release barrier if some exception happened and start state could not be reached
             }
         }
-        startupCompleteBarrier.wait()
+        startupComplete.wait()
         return deferredResult
     }
 
