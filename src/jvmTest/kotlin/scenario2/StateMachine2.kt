@@ -74,7 +74,7 @@ class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFu
     }
 
 
-    override fun onEventPushed(event: Event) {
+    override fun onEventPushed(event: Event, waitForProcessed: Boolean) {
         println("${getLogInfos()} pushed event: $event")
     }
 

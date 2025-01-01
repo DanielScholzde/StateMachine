@@ -36,8 +36,8 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     private class ExitStateMachineException : Exception("exit state machine")
 
     private val leaveStateFunctionException = LeaveStateFunctionException() // pre-instantiated exception for better performance
-    private var scope: CoroutineScope? = null // CoroutineScope of complete state machine
-    private var stateFunctionScope: CoroutineScope? = null // CoroutineScope of a single state function
+    private var coroutineScope: CoroutineScope? = null // CoroutineScope of complete state machine
+    private var stateFunctionCoroutineScope: CoroutineScope? = null // CoroutineScope of a single state function
     private var eventConsumer: Job? = null
     private var result: RESULT? = null
     private val stateFunctionExecutionMutex = Mutex() // ensures, that only one state function is executed at any time
@@ -57,9 +57,9 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
         private var hasTriggeredAStateChange = false
         private val eventProcessedBarrier = if (enableWaitForProcessed) Barrier() else null
 
-        suspend fun waitForEventProcessedResult(): Boolean {
+        suspend fun waitForEventProcessedResult(): SendEventResult {
             eventProcessedBarrier!!.wait()
-            return processed
+            return SendEventResult(processed, hasTriggeredAStateChange)
         }
 
         fun eventReceived(processed: Boolean, hasTriggeredAStateChange: Boolean) {
@@ -75,17 +75,17 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     protected suspend fun CoroutineScope.start(startStateFunction: StateFunction): Deferred<RESULT> {
         val startupComplete = startupCompleteBarrier!!
         val deferredResult = async {
-            if (scope != null) throw IllegalStateException("State machine is already running!")
+            if (coroutineScope != null) throw IllegalStateException("State machine is already running!")
             try {
                 coroutineScope {
-                    scope = this
+                    coroutineScope = this
                     launchStateFunction(startStateFunction)
                     // coroutineScope waits, until all child coroutines (state functions) are finished
                 }
                 @Suppress("UNCHECKED_CAST")
                 result as RESULT
             } finally {
-                scope = null
+                coroutineScope = null
                 cleanup()
                 startupCompleteBarrier?.release() // release barrier if some exception happened and start state could not be reached
             }
@@ -100,21 +100,21 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
 
     /** Add an event to the state machines event queue. Returns immediately. */
     fun pushEvent(event: EVENT) {
-        onEventPushed(event)
+        onEventPushed(event, waitForProcessed = false)
         val result = eventChannel.trySend(EventWrapper(event, counter.get(), enableWaitForProcessed = false))
         if (result.isFailure) throw IllegalStateException()
-        if (result.isClosed) throw IllegalStateException("Events channel is already closed!")
+        if (result.isClosed) throw IllegalStateException("Event channel is already closed!")
     }
 
-    suspend fun sendEvent(event: EVENT): Boolean {
-        onEventPushed(event)
+    suspend fun sendEvent(event: EVENT): SendEventResult {
+        onEventPushed(event, waitForProcessed = true)
         val eventWrapper = EventWrapper(event, counter.get(), enableWaitForProcessed = true)
         eventChannel.send(eventWrapper) // throws an exception if channel is closed
         return eventWrapper.waitForEventProcessedResult() // wait until event is processed
     }
 
-    /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
-    protected open fun onEventPushed(event: EVENT) {}
+    data class SendEventResult(val processed: Boolean, val hasTriggeredAStateChange: Boolean)
+
 
     protected fun goto(stateFunction: StateFunction, transitionAction: TransitionAction? = null): Nothing {
         if (transitionsLaunchedCounter.incrementAndGet() == 1) {
@@ -124,28 +124,28 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     }
 
     private fun launchStateFunction(stateFunction: StateFunction, transitionAction: TransitionAction? = null, currentEvent: EventWrapper<EVENT>? = null) {
-        scope!!.launch { executeStateFunction(stateFunction, transitionAction, currentEvent) }
+        coroutineScope!!.launch { executeStateFunction(stateFunction, transitionAction, currentEvent) }
     }
 
     /** HINT: this method keeps running within state function and stops at exiting or when ignoreEvents is called */
     protected suspend fun consumeEventsWithMeta(processEvent: suspend (EVENT, EventMeta) -> Unit): Nothing {
         eventConsumer?.cancel() // stop/cancel existing event consumer
-        val job = stateFunctionScope!!.launch {
+        val job = stateFunctionCoroutineScope!!.launch {
             for (eventWrapper in eventChannel) {
                 val eventMeta = EventMeta(eventWrapper.created, eventWrapper.createdOnCount == counter.get())
-                onEventReceived(eventWrapper.event, eventMeta, false)
+                onEventReceived(eventWrapper.event, eventMeta, ignored = false)
                 try {
-                    currentEvent = eventWrapper
+                    currentEvent = eventWrapper // set currentEvent to be picked up by goto method
                     processEvent(eventWrapper.event, eventMeta)
-                    eventWrapper.eventReceived(true, false)
+                    eventWrapper.eventReceived(processed = true, hasTriggeredAStateChange = false)
                 } catch (e: LeaveStateFunctionException) {
                     // eventReceived is called deferred within executeStateFunction
                     throw e
                 } catch (e: ExitStateMachineException) {
-                    eventWrapper.eventReceived(true, true)
+                    eventWrapper.eventReceived(processed = true, hasTriggeredAStateChange = true)
                     throw e
                 } catch (e: Exception) {
-                    eventWrapper.eventReceived(true, false)
+                    eventWrapper.eventReceived(processed = true, hasTriggeredAStateChange = false)
                     throw e
                 } finally {
                     currentEvent = null
@@ -166,22 +166,21 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
     /** HINT: this method does not wait; keeps running within state function and stops at exiting or when consumeEvents is called */
     protected fun ignoreEvents() {
         eventConsumer?.cancel() // stop/cancel existing event consumer
-        eventConsumer = stateFunctionScope!!.launch {
+        eventConsumer = stateFunctionCoroutineScope!!.launch {
             for (eventWrapper in eventChannel) {
-                onEventReceived(eventWrapper.event, EventMeta(eventWrapper.created, eventWrapper.createdOnCount == counter.get()), true)
-                eventWrapper.eventReceived(false, false)
+                onEventReceived(eventWrapper.event, EventMeta(eventWrapper.created, createdWithinThisStateFunction = eventWrapper.createdOnCount == counter.get()), ignored = true)
+                eventWrapper.eventReceived(processed = false, hasTriggeredAStateChange = false)
             }
         }
     }
-
-    /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
-    protected open fun onEventReceived(event: EVENT, eventMeta: EventMeta, ignored: Boolean) {}
 
     protected fun clearEventsChannel() { // non-suspending!
         while (true) {
             val result = eventChannel.tryReceive()
             if (!result.isSuccess) break
-            result.getOrNull()?.eventReceived(false, false)
+            val eventWrapper = result.getOrNull()!!
+            onEventReceived(eventWrapper.event, EventMeta(eventWrapper.created, createdWithinThisStateFunction = eventWrapper.createdOnCount == counter.get()), ignored = true)
+            eventWrapper.eventReceived(processed = false, hasTriggeredAStateChange = false)
         }
     }
 
@@ -189,6 +188,13 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
         this.result = result
         throw ExitStateMachineException() // to leave current state function (cancel all pending coroutines/code)
     }
+
+
+    /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
+    protected open fun onEventPushed(event: EVENT, waitForProcessed: Boolean) {}
+
+    /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
+    protected open fun onEventReceived(event: EVENT, eventMeta: EventMeta, ignored: Boolean) {}
 
     /** HINT: this method is allowed to call goto() or exitWithResult() */
     protected open suspend fun onEnterState(stateFunction: StateFunction) {}
@@ -221,18 +227,18 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
                     val ok = handleExceptionsIntern {
                         val duration = measureTime {
                             coroutineScope {
-                                stateFunctionScope = this
+                                stateFunctionCoroutineScope = this
                                 try {
                                     counter.incrementAndGet()
                                     transitionAction.invoke()
                                 } finally {
                                     eventConsumer = null
-                                    stateFunctionScope = null
+                                    stateFunctionCoroutineScope = null
                                 }
                             }
                         }
                         // 'transition' to start state function has no transitionAction, so here currentState must always be not null
-                        onTransitionActionFinished(currentState!!, stateFunction, duration)
+                        onTransitionActionFinished(fromState = currentState!!, toState = stateFunction, duration = duration)
                     }
                     if (!ok) return@withLock
                 }
@@ -243,11 +249,11 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
             startupCompleteBarrier?.release() // release startup complete barrier after setting currentState
             startupCompleteBarrier = null
 
-            event?.eventReceived(true, true) // release event processed barrier after executing transition and setting currentState
+            event?.eventReceived(processed = true, hasTriggeredAStateChange = true) // release event processed barrier after executing transition and setting currentState
 
             handleExceptionsIntern(stateFunction) {
                 coroutineScope {
-                    stateFunctionScope = this
+                    stateFunctionCoroutineScope = this
                     try {
                         if (clearEventsBeforeStateFunctionEnter) clearEventsChannel()
                         counter.incrementAndGet()
@@ -262,7 +268,7 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
                         throw e
                     } finally {
                         eventConsumer = null
-                        stateFunctionScope = null
+                        stateFunctionCoroutineScope = null
                     }
                 }
             }

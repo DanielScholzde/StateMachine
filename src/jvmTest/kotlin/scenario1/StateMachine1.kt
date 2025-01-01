@@ -64,7 +64,7 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
     }
 
 
-    override fun onEventPushed(event: Event) {
+    override fun onEventPushed(event: Event, waitForProcessed: Boolean) {
         println("pushed event: $event")
     }
 
