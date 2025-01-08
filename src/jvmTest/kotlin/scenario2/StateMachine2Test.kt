@@ -14,7 +14,7 @@ class StateMachine2Test {
 
     @Test
     fun test() {
-        newSingleThreadDispatcher.use { singleThreadDispatcher ->
+        newSingleThreadDispatcher.use { singleThreadDispatcher -> // it is possible to use a single fixed thread for running the state machine
             runBlocking(singleThreadDispatcher) {
 
                 with(StateMachine2()) { // state machine is configured with clearEventsBeforeStateFunctionEnter = true
