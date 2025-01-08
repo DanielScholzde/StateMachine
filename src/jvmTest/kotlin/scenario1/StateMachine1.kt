@@ -1,7 +1,6 @@
 package scenario1
 
-import de.danielscholz.statemachine.AbstractStateMachine
-import de.danielscholz.statemachine.StateFunction
+import common.AbstractLoggingStateMachine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -17,7 +16,7 @@ enum class Result { SUCCESS, FAILURE }
 
 
 // state machine with an end state and an events channel which keeps all events until they get processed
-class StateMachine1 : AbstractStateMachine<Event, Result>() {
+class StateMachine1 : AbstractLoggingStateMachine<Event, Result>() {
 
     suspend fun CoroutineScope.start() = start(::a) // specify start state function 'a'
 
@@ -34,7 +33,6 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
     }
 
     private suspend fun b() {
-        // do initial work for state here
         consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
@@ -46,7 +44,6 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
     }
 
     private suspend fun c() {
-        // do initial work for state here
         consumeEvents { event ->
             when {
                 event is Event.A -> goto(::a)
@@ -63,16 +60,5 @@ class StateMachine1 : AbstractStateMachine<Event, Result>() {
         exitWithResult(Result.FAILURE)
     }
 
-
-    override fun onEventPushed(event: Event, waitForProcessed: Boolean) {
-        println("pushed event: $event")
-    }
-
-    override fun onEventReceived(event: Event, eventMeta: EventMeta, ignored: Boolean) {
-        println("received event: $event")
-    }
-
-    override suspend fun onEnterState(stateFunction: StateFunction) {
-        println("entering state function: ${stateFunction.name}")
-    }
+    override fun getLogInfos() = ""
 }

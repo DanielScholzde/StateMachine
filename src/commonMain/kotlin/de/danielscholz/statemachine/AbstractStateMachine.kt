@@ -100,16 +100,18 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
 
     /** Add an event to the state machines event queue. Returns immediately. */
     fun pushEvent(event: EVENT) {
-        onEventPushed(event, waitForProcessed = false)
+        onSendingEvent(event, waitForProcessed = false)
         val result = eventChannel.trySend(EventWrapper(event, counter.get(), enableWaitForProcessed = false))
+        onSendEvent(event, waitForProcessed = false)
         if (result.isFailure) throw IllegalStateException()
         if (result.isClosed) throw IllegalStateException("Event channel is already closed!")
     }
 
     suspend fun sendEvent(event: EVENT): SendEventResult {
-        onEventPushed(event, waitForProcessed = true)
+        onSendingEvent(event, waitForProcessed = true)
         val eventWrapper = EventWrapper(event, counter.get(), enableWaitForProcessed = true)
         eventChannel.send(eventWrapper) // throws an exception if channel is closed
+        onSendEvent(event, waitForProcessed = true)
         return eventWrapper.waitForEventProcessedResult() // wait until event is processed
     }
 
@@ -191,7 +193,10 @@ abstract class AbstractStateMachine<EVENT : Any, RESULT : Any?>(val clearEventsB
 
 
     /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
-    protected open fun onEventPushed(event: EVENT, waitForProcessed: Boolean) {}
+    protected open fun onSendingEvent(event: EVENT, waitForProcessed: Boolean) {}
+
+    /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
+    protected open fun onSendEvent(event: EVENT, waitForProcessed: Boolean) {}
 
     /** ATTENTION: this method must never call goto() or exitWithResult() AND must never throw an exception! */
     protected open fun onEventReceived(event: EVENT, eventMeta: EventMeta, ignored: Boolean) {}

@@ -1,7 +1,6 @@
 package scenario2
 
-import de.danielscholz.statemachine.AbstractStateMachine
-import de.danielscholz.statemachine.StateFunction
+import common.AbstractLoggingStateMachine
 import de.danielscholz.statemachine.parallel
 import de.danielscholz.statemachine.repeatEvery
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +19,7 @@ var sensorValue = 0.0
 
 
 // state machine with no end states (it never stops normally) and cleared events channel for each state function
-class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFunctionEnter = true) {
+class StateMachine2 : AbstractLoggingStateMachine<Event, Unit>(clearEventsBeforeStateFunctionEnter = true) {
 
     suspend fun CoroutineScope.start() = start(::a) // specify start state function 'a'
 
@@ -72,25 +71,5 @@ class StateMachine2 : AbstractStateMachine<Event, Unit>(clearEventsBeforeStateFu
             if (sensorValue > 0.5) goto(::b)
         }
     }
-
-
-    override fun onEventPushed(event: Event, waitForProcessed: Boolean) {
-        println("${getLogInfos()} pushed event: $event")
-    }
-
-    override fun onEventReceived(event: Event, eventMeta: EventMeta, ignored: Boolean) {
-        println("${getLogInfos()} received ${if (ignored) "ignored " else ""}event: $event")
-    }
-
-    override suspend fun onEnterState(stateFunction: StateFunction) {
-        println("${getLogInfos()} entering state function: ${stateFunction.name}")
-    }
-
-    val start = System.currentTimeMillis()
-
-    private fun getLogInfos() =
-        "[${Thread.currentThread().name.padEnd(22, ' ')}] ${
-            (System.currentTimeMillis() - start).let { ((it / 1000) % 60).toString().padStart(2, '0') + "." + (it % 1000).toString().padStart(3, '0') }
-        }:"
 
 }

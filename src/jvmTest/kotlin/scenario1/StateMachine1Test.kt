@@ -2,6 +2,7 @@ package scenario1
 
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import kotlin.test.assertEquals
 
 
 class StateMachine1Test {
@@ -16,7 +17,7 @@ class StateMachine1Test {
             sendEvent(Event.B)
             sendEvent(Event.C(finish = true)) // transition to end state 'endState' should be triggered
 
-            println(result.await())
+            assertEquals(Result.SUCCESS, result.await())
         }
 
         // output is:
@@ -35,7 +36,6 @@ class StateMachine1Test {
         // pushed event: C(finish=true)
         // received event: C(finish=true)
         // entering state function: endState
-        // SUCCESS
     }
 
 }
