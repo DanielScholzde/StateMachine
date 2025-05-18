@@ -1,4 +1,4 @@
-# StateMachine
+# StateMachine (Prototype)
 
 A tiny but powerful state machine powered by Kotlin Coroutines.
 
